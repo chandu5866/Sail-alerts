@@ -1,0 +1,5 @@
+yfinance
+growwapi
+pyotp
+pandas
+requests
