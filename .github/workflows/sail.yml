@@ -1,0 +1,44 @@
+name: SAIL intraday alerts
+
+on:
+  schedule:
+    # Every 5 minutes, Mon-Fri, 04:00-09:55 UTC (= 9:30 AM-3:25 PM IST).
+    # The script itself only acts between 9:30 AM and 3:15 PM IST.
+    - cron: "*/5 4-9 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sail-alerts
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Run check
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          GROWW_TOTP_TOKEN: ${{ secrets.GROWW_TOTP_TOKEN }}
+          GROWW_TOTP_SECRET: ${{ secrets.GROWW_TOTP_SECRET }}
+        run: python sail_intraday_bot.py
+
+      - name: Save state
+        run: |
+          git config user.name "alert-bot"
+          git config user.email "alert-bot@users.noreply.github.com"
+          git add state.json || true
+          git diff --staged --quiet || (git commit -m "update state" && git push)
