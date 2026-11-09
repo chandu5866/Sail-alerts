@@ -37,7 +37,7 @@ DAY_END = dtime(15, 31)
 SUMMARY_AT = dtime(15, 15, 20)  # right after the 3:10-3:15 candle
 LATE_MIN = 8                   # calls older than this are "missed"
 GRACE_S = 25                   # wait after a candle closes so Groww has it
-HISTORY_DAYS = 10              # calendar days of 5-min candles to warm up indicators
+HISTORY_DAYS = 45              # calendar days of 5-min candles to warm up indicators
 ICON = {"BUY": "🟢", "SELL": "🔴"}
 
 
