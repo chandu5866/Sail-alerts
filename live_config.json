@@ -1,5 +1,5 @@
 {
-  "trained_at": "2026-11-09T20:31+05:30",
+  "trained_at": "2026-11-09T21:02+05:30",
   "capital": 200000.0,
   "stocks": [
     {
@@ -14,18 +14,18 @@
       "status": "paper",
       "train": {
         "n": 45,
-        "net": 16666.95,
-        "acc": 46.7
+        "net": 11280.28,
+        "acc": 48.9
       },
       "val": {
         "n": 27,
-        "net": 10127.6,
-        "acc": 55.6
+        "net": 7955.02,
+        "acc": 59.3
       },
       "test": {
         "n": 22,
-        "net": -4973.74,
-        "acc": 45.5
+        "net": -4447.13,
+        "acc": 40.9
       }
     },
     {
@@ -40,44 +40,44 @@
       "status": "tested",
       "train": {
         "n": 20,
-        "net": 7880.87,
-        "acc": 55.0
+        "net": 4839.7,
+        "acc": 50.0
       },
       "val": {
         "n": 8,
-        "net": 3278.52,
+        "net": 2835.09,
         "acc": 62.5
       },
       "test": {
         "n": 11,
-        "net": 879.72,
-        "acc": 36.4
+        "net": 1799.86,
+        "acc": 45.5
       }
     },
     {
-      "sym": "ADANIPORTS",
+      "sym": "VEDL",
       "params": {
-        "kind": "st15",
-        "tf": "none",
+        "kind": "ema15",
+        "tf": "day",
         "am": 2.5,
         "R": 2.0
       },
-      "label": "15-min Supertrend flip, target 2x risk",
-      "status": "paper",
+      "label": "15-min EMA 9/21 crossover in the daily trend, target 2x risk",
+      "status": "tested",
       "train": {
-        "n": 42,
-        "net": 4954.86,
-        "acc": 47.6
+        "n": 27,
+        "net": 5773.13,
+        "acc": 51.9
       },
       "val": {
-        "n": 24,
-        "net": 331.01,
-        "acc": 33.3
+        "n": 15,
+        "net": 1870.14,
+        "acc": 46.7
       },
       "test": {
-        "n": 21,
-        "net": -11121.37,
-        "acc": 28.6
+        "n": 14,
+        "net": 972.88,
+        "acc": 57.1
       }
     },
     {
@@ -92,44 +92,44 @@
       "status": "paper",
       "train": {
         "n": 41,
-        "net": 19057.05,
-        "acc": 53.7
+        "net": 16127.07,
+        "acc": 56.1
       },
       "val": {
         "n": 20,
-        "net": -12400.77,
+        "net": -9237.87,
         "acc": 20.0
       },
       "test": {
         "n": 18,
-        "net": -2706.33,
+        "net": -5656.63,
         "acc": 38.9
       }
     },
     {
-      "sym": "ADANIENT",
+      "sym": "BHEL",
       "params": {
         "kind": "ema15",
         "tf": "day",
         "am": 2.5,
-        "R": 1.5
+        "R": 2.0
       },
-      "label": "15-min EMA 9/21 crossover in the daily trend, target 1.5x risk",
+      "label": "15-min EMA 9/21 crossover in the daily trend, target 2x risk",
       "status": "paper",
       "train": {
-        "n": 33,
-        "net": 12806.59,
-        "acc": 54.5
+        "n": 28,
+        "net": 13299.23,
+        "acc": 50.0
       },
       "val": {
-        "n": 22,
-        "net": -294.36,
-        "acc": 40.9
+        "n": 28,
+        "net": -10290.73,
+        "acc": 35.7
       },
       "test": {
-        "n": 19,
-        "net": -7980.24,
-        "acc": 36.8
+        "n": 12,
+        "net": -10671.15,
+        "acc": 8.3
       }
     }
   ]
