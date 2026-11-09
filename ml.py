@@ -578,7 +578,7 @@ def scorecard(state, calls, model):
                          f"in profit {sum(float(x['net']) > 0 for x in part) / n * 100:.0f}%, "
                          f"net Rs {sum(float(x['net']) for x in part):+,.0f}")
     send("\n".join(lines))
-  def check(market, model, state, now):
+def check(market, model, state, now):
     calls, have = pick(market.frames(now), model, only_day=now.date())
     if not have and now.time() >= dtime(9, 40):
         send("⚠️ No candles from Groww today by 9:40. Market holiday or data problem: no calls today.")
