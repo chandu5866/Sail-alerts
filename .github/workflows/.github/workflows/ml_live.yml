@@ -1,0 +1,62 @@
+name: Learning bot (live calls)
+
+on:
+  schedule:
+    # 03:15 UTC = 8:45 AM IST: plan + watching until 12:00
+    - cron: "15 3 * * 1-5"
+    # 06:25 UTC = 11:55 AM IST: waits for the morning job, then runs to 3:31 PM
+    - cron: "25 6 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "test = check Groww + Telegram | replay = dry run of recent days | run = live now"
+        default: "test"
+      days:
+        description: "replay only: how many recent trading days"
+        default: "1"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ml-live
+  cancel-in-progress: false
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Run learning bot
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          GROWW_TOTP_TOKEN: ${{ secrets.GROWW_TOTP_TOKEN }}
+          GROWW_TOTP_SECRET: ${{ secrets.GROWW_TOTP_SECRET }}
+          RUN_MODE: ${{ inputs.mode }}
+          REPLAY_DAYS: ${{ inputs.days }}
+        run: python ml.py
+
+      - name: Save state and trade log
+        if: always()
+        run: |
+          git config user.name "alert-bot"
+          git config user.email "alert-bot@users.noreply.github.com"
+          [ -f ml_state.json ] && git add ml_state.json
+          [ -f ml_trades.csv ] && git add ml_trades.csv
+          git diff --staged --quiet && exit 0
+          git commit -m "learning bot state"
+          for i in 1 2 3; do
+            git pull --rebase -q && git push -q && exit 0
+            sleep 5
+          done
+          exit 1
