@@ -1,5 +1,131 @@
 {
-  "trained_at": "2026-11-09T20:03+05:30",
-  "capital": 20000.0,
-  "stocks": []
+  "trained_at": "2026-11-09T20:14+05:30",
+  "capital": 200000.0,
+  "stocks": [
+    {
+      "sym": "TATASTEEL",
+      "params": {
+        "kind": "bb",
+        "rsi": 25,
+        "R": 1.5
+      },
+      "label": "Bollinger band + RSI reversal, RSI 25/75, target 1.5x risk",
+      "status": "paper",
+      "train": {
+        "n": 29,
+        "net": 4349.58,
+        "acc": 55.2
+      },
+      "val": {
+        "n": 16,
+        "net": 6942.57,
+        "acc": 75.0
+      },
+      "test": {
+        "n": 19,
+        "net": -3304.74,
+        "acc": 42.1
+      }
+    },
+    {
+      "sym": "INFY",
+      "params": {
+        "kind": "st",
+        "mult": 2.0,
+        "R": 2.0
+      },
+      "label": "Supertrend flip (2.0x ATR), target 2x risk",
+      "status": "paper",
+      "train": {
+        "n": 171,
+        "net": 4653.75,
+        "acc": 46.8
+      },
+      "val": {
+        "n": 90,
+        "net": -23461.82,
+        "acc": 36.7
+      },
+      "test": {
+        "n": 82,
+        "net": -12929.26,
+        "acc": 37.8
+      }
+    },
+    {
+      "sym": "NTPC",
+      "params": {
+        "kind": "bb",
+        "rsi": 25,
+        "R": 1.5
+      },
+      "label": "Bollinger band + RSI reversal, RSI 25/75, target 1.5x risk",
+      "status": "paper",
+      "train": {
+        "n": 20,
+        "net": 1976.47,
+        "acc": 60.0
+      },
+      "val": {
+        "n": 11,
+        "net": -1507.79,
+        "acc": 45.5
+      },
+      "test": {
+        "n": 17,
+        "net": -3832.69,
+        "acc": 41.2
+      }
+    },
+    {
+      "sym": "JSWSTEEL",
+      "params": {
+        "kind": "ema",
+        "vol": 1.5,
+        "R": 2.0
+      },
+      "label": "EMA 9/21 crossover with the EMA 50 trend, volume 1.5x, target 2x risk",
+      "status": "paper",
+      "train": {
+        "n": 45,
+        "net": 1363.71,
+        "acc": 51.1
+      },
+      "val": {
+        "n": 28,
+        "net": -12278.07,
+        "acc": 21.4
+      },
+      "test": {
+        "n": 17,
+        "net": -3122.23,
+        "acc": 41.2
+      }
+    },
+    {
+      "sym": "ONGC",
+      "params": {
+        "kind": "bb",
+        "rsi": 25,
+        "R": 1.0
+      },
+      "label": "Bollinger band + RSI reversal, RSI 25/75, target 1x risk",
+      "status": "paper",
+      "train": {
+        "n": 26,
+        "net": 83.7,
+        "acc": 65.4
+      },
+      "val": {
+        "n": 19,
+        "net": -1514.85,
+        "acc": 57.9
+      },
+      "test": {
+        "n": 14,
+        "net": -1334.31,
+        "acc": 50.0
+      }
+    }
+  ]
 }
