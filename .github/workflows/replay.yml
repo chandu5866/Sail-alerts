@@ -1,0 +1,31 @@
+name: Replay (dry run)
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "How many recent trading days to replay (1 = the latest day)"
+        default: "1"
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Replay
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          GROWW_TOTP_TOKEN: ${{ secrets.GROWW_TOTP_TOKEN }}
+          GROWW_TOTP_SECRET: ${{ secrets.GROWW_TOTP_SECRET }}
+          REPLAY_DAYS: ${{ inputs.days }}
+        run: python replay.py
