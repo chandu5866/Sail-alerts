@@ -457,4 +457,190 @@ def scorecard(state, calls, model):
     if not rows:
         lines.append("No calls today (nothing passed the confidence cut-off).")
     for x in rows:
-        mark
+        mark = "✅" if x["net"] > 0 else "❌"
+        miss = " (missed alert)" if not x["alerted"] else ""
+        lines.append(f"{mark} {x['side']} {x['symbol']} {fmt(x['entry'])} -> {fmt(x['exit'])} "
+                     f"{x['why'].lower()}, conf {x['confidence'] * 100:.0f}%, "
+                     f"net Rs {x['net']:+,.0f}{miss}")
+    if rows:
+        lines.append(f"Today: {sum(x['net'] > 0 for x in rows)}/{len(rows)} in profit, "
+                     f"net Rs {sum(x['net'] for x in rows):+,.0f} after charges")
+    try:
+        with open(LOG_FILE) as f:
+            hist = list(csv.DictReader(f))
+    except FileNotFoundError:
+        hist = []
+    for name, part in (("Last 30 calls", hist[-30:]), ("All calls so far", hist)):
+        if part:
+            n = len(part)
+            wins = sum(1 for x in part if float(x["net"]) > 0)
+            tot = sum(float(x["net"]) for x in part)
+            lines.append(f"{name}: {n}, accuracy {wins / n * 100:.0f}%, net Rs {tot:+,.0f}")
+    send("\n".join(lines))
+
+
+def check(market, model, state, now):
+    calls, have = day_calls(market.frames(now), model, now.date())
+    if not have and now.time() >= dtime(9, 40):
+        send("⚠️ No candles from Groww today by 9:40. Market holiday or data problem: "
+             "no calls today.")
+        state["done"] = True
+        return calls
+    for r in calls.itertuples():
+        tkey = f"{r.sym}:{r.t_sig:%H%M}:{r.setup}"
+        ev = [("ENTRY", r.t_sig)] + ([("EXIT", r.t_exit)] if not pd.isna(r.t_exit) else [])
+        for kind, ts in ev:
+            key = f"{tkey}:{kind}"
+            if key in state["sent"]:
+                continue
+            state["sent"].append(key)
+            if kind == "ENTRY" and (now - ts).total_seconds() / 60 > LATE_MIN:
+                state["missed"].append(tkey)
+                send(f"⏱ Missed: {'BUY' if r.side == 1 else 'SELL'} {r.sym} was due at "
+                     f"{ts:%H:%M} (~{fmt(r.entry)}). Too late now. Don't chase it.")
+                continue
+            if tkey in state["missed"]:
+                continue
+            send(entry_msg(r, model) if kind == "ENTRY" else exit_msg(r))
+    return calls
+
+
+def next_wake(now, end_dt):
+    base = now.replace(hour=9, minute=15, second=0, microsecond=0)
+    k = max(1, int((now - base - timedelta(seconds=GRACE_S)) // STEP) + 1)
+    return min(base + k * STEP + timedelta(seconds=GRACE_S), end_dt)
+
+
+def session(market, model, state, end_t, clock=lambda: datetime.now(IST), sleep=time.sleep):
+    today = clock().date()
+    end_dt = datetime.combine(today, end_t, tzinfo=IST)
+    first = datetime.combine(today, dtime(9, 35, GRACE_S), tzinfo=IST)
+    catch_up = clock() >= first
+    while True:
+        now = clock()
+        if now >= end_dt:
+            break
+        if not catch_up:
+            wake = max(next_wake(now, end_dt), min(first, end_dt))
+            if wake > now:
+                sleep((wake - now).total_seconds())
+        catch_up = False
+        now = clock()
+        calls = check(market, model, state, now)
+        if not state["done"] and now.time() >= SUMMARY_AT:
+            scorecard(state, calls, model)
+            state["done"] = True
+        save_state(state)
+        if state["done"]:
+            break
+
+
+def run():
+    now = datetime.now(IST)
+    model = load_model()
+    if not model:
+        if now.time() < dtime(11, 30):
+            send("⚠️ Learning bot: no model yet. Run the 'Learning study' workflow first.")
+        return
+    if now.weekday() >= 5:
+        print("Weekend.")
+        return
+    state = load_state(now.date())
+    if state["done"]:
+        print("Today is already finished.")
+        return
+    if not state["plan_sent"]:
+        send(plan_msg(model, now, now.time() > dtime(9, 35)))
+        state["plan_sent"] = True
+        save_state(state)
+    market = Market(E.login(), model["shares"], now.date())
+    session(market, model, state, HANDOFF if now.time() < dtime(11, 30) else DAY_END)
+    save_state(state)
+
+
+def test():
+    now = datetime.now(IST)
+    model = load_model()
+    g = E.login()
+    df = E.fetch_5min(g, "SBIN", now.date() - timedelta(days=7), now)
+    last = (f"Latest SBIN candle: {fmt(float(df['Close'].iloc[-1]))} at {df.index[-1]:%d %b %H:%M}"
+            if not df.empty else "No candles received.")
+    send(f"✅ Learning bot test: Groww OK, Telegram OK.\n{last}\n\n"
+         + (plan_msg(model, now, False) if model else
+            "No model yet: run the 'Learning study' workflow."))
+
+
+def replay():
+    days_n = max(1, int(os.getenv("REPLAY_DAYS", "1") or "1"))
+    model = load_model()
+    if not model:
+        send("🔁 Replay: no model yet. Run the 'Learning study' workflow first.")
+        return
+    g = E.login()
+    now = datetime.now(IST)
+    start = now.date() - timedelta(days=HISTORY_DAYS + days_n * 2 + 7)
+    frames = {}
+    for sym in model["shares"]:
+        try:
+            df = E.fetch_5min(g, sym, start, now, pause=0.1)
+            frames[sym] = df[df.index + STEP <= now]
+        except Exception as e:
+            print(sym, "failed:", type(e).__name__, e)
+    all_days = sorted({ts.date() for df in frames.values()            # normal sessions only
+                       for ts in df.index if ts.time() == dtime(9, 15)})
+    days = all_days[-days_n:]
+    parts = []
+    for sym, df in frames.items():
+        if df.empty:
+            continue
+        ind = E.indicators(df)
+        c = stock_candidates(sym, ind, model["capital"], day_from=days[0])
+        if not c.empty:
+            parts.append(c)
+    allc = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+    if not allc.empty:
+        allc["p"] = predict(model["models"], allc)
+    chosen = allc.loc[policy(allc, model["threshold"], model["max_trades"])] if not allc.empty else allc
+    lines = [f"🔁 DRY RUN - learning bot ({len(days)} day(s)), cut-off "
+             f"{model['threshold'] * 100:.0f}%, Rs {model['capital']:,.0f} per call, after charges, "
+             f"one trade at a time. No orders were placed."]
+    tn = tw = 0
+    tnet = 0.0
+    for d in days:
+        part = chosen[chosen["day"] == d] if not chosen.empty else chosen
+        lines += ["", f"📅 {d:%a %d %b}"]
+        if part.empty:
+            lines.append("  No calls.")
+            continue
+        dn = dw = 0
+        dnet = 0.0
+        for r in part.itertuples():
+            icon = "🟢 BUY" if r.side == 1 else "🔴 SELL"
+            lines.append(f"  {r.t_sig:%H:%M} {icon} {r.sym} at {fmt(r.entry)} "
+                         f"(SL {fmt(r.sl)}, Tg {fmt(r.tgt)}) conf {r.p * 100:.0f}%")
+            if pd.isna(r.net):
+                lines.append("        still open when the data ended")
+                continue
+            what = {"TARGET": "🎯 target", "STOP": "❌ stop-loss", "CLOSE": "⏰ squared off"}[r.why]
+            lines.append(f"        {r.t_exit:%H:%M} {what} at {fmt(r.exit)} -> Rs {r.net:+,.0f}")
+            dn += 1
+            dw += r.net > 0
+            dnet += r.net
+        lines.append(f"  Day: {dw}/{dn} in profit, net Rs {dnet:+,.0f}")
+        tn, tw, tnet = tn + dn, tw + dw, tnet + dnet
+    if len(days) > 1 and tn:
+        lines += ["", f"TOTAL: {tn} calls, {tw / tn * 100:.0f}% in profit, "
+                      f"net Rs {tnet:+,.0f} after charges."]
+    buf = ""
+    for p in lines:
+        if buf and len(buf) + len(p) + 1 > 3500:
+            send(buf)
+            buf = ""
+        buf = f"{buf}\n{p}" if buf else p
+    if buf:
+        send(buf)
+
+
+if __name__ == "__main__":
+    mode = (sys.argv[1] if len(sys.argv) > 1 else os.getenv("RUN_MODE") or "run").strip().lower()
+    {"learn": learn, "run": run, "test": test, "replay": replay}.get(mode, run)()
