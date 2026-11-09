@@ -69,3 +69,35 @@ def save_state(state: dict) -> None:
 def plan_msg(cfg, now, late):
     cap = cfg.get("capital", 20000)
     lines = [f"📋 Today's watch ({now:%a %d %b}), picked by the study of "
+             f"{cfg['trained_at'][:10]}:", ""]
+    for s in cfg["stocks"]:
+        te = s["test"]
+        icon = "✅" if s["status"] == "tested" else "📝 paper only"
+        lines.append(f"{icon} {s['sym']}: {s['label']}\n"
+                     f"   unseen test: {te['n']} trades, {te['acc']:.0f}% in profit, "
+                     f"Rs {te['net']:+,.0f}")
+    lines += ["", f"Calls come between 9:35 and 2:30, Rs {cap:,.0f} per call, intraday (MIS).",
+              "📝 = didn't pass every test: watch it, don't use real money."]
+    if late:
+        lines.append(f"⚠️ Bot started late ({now:%H:%M}). Calls more than {LATE_MIN} min "
+                     f"old are marked missed.")
+    return "\n".join(lines)
+
+
+def entry_msg(stock, t, ts, capital):
+    qty = max(1, int(capital // t["entry"]))
+    verb = "BUY" if t["side"] == "BUY" else "SELL (short)"
+    tag = "" if stock["status"] == "tested" else "\n📝 Paper call: this setup didn't pass every test."
+    return (f"{ICON[t['side']]} {verb} {stock['sym']} at ~{fmt(t['entry'])}  ({ts:%H:%M})\n"
+            f"SL {fmt(t['sl'])} | Target {fmt(t['tgt'])}\n"
+            f"Qty ~{qty} for Rs {capital:,.0f}. Intraday (MIS).\n"
+            f"Why: {stock['label']}.\n"
+            f"Skip if the price already moved 0.3% past entry.{tag}")
+
+
+def exit_msg(sym, t):
+    if t["why"] == "TARGET":
+        return f"🎯 {sym}: target {fmt(t['exit'])} reached. Exit the {t['side']} trade."
+    if t["why"] == "STOP":
+        return f"❌ {sym}: SL {fmt(t['exit'])} hit. Exit the {t['side']} trade."
+    return f"⏰ {sym}: square off your {t['side']} trade now (last {fmt(t['exit'])})."
