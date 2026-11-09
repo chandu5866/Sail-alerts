@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
     inputs:
       capital:
-        description: "Rupees per trade"
-        default: "20000"
+        description: "Rupees per trade (one trade at a time with Rs 2 lakh)"
+        default: "200000"
 
 permissions:
   contents: write
@@ -37,7 +37,7 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           GROWW_TOTP_TOKEN: ${{ secrets.GROWW_TOTP_TOKEN }}
           GROWW_TOTP_SECRET: ${{ secrets.GROWW_TOTP_SECRET }}
-          BACKTEST_CAPITAL: ${{ inputs.capital }}
+          BACKTEST_CAPITAL: ${{ inputs.capital || '200000' }}
         run: python trainer.py
 
       - name: Save the picks
