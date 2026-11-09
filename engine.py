@@ -46,7 +46,7 @@ from sail_lab3 import rsi_series
 
 FIRST_SIGNAL = dtime(9, 30)
 LAST_SIGNAL = dtime(14, 25)       # last candle allowed to give a signal (ends 2:30)
-LAST_BAR = dtime(15, 10)          # square off at the close of this candle
+LAST_BAR = dtime(14, 55)          # square off at the close of this candle
 ATR_MULT, MIN_SL_PCT, MAX_SL_PCT = 1.5, 0.25, 1.2
 MAX_TRADES_PER_DAY = 3
 HISTORY_DAYS_NEEDED = 45          # calendar days of 5-min data for the daily trend
