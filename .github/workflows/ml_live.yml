@@ -1,11 +1,17 @@
 name: Learning bot (live calls)
 
 on:
-  schedule:
-    # 03:15 UTC = 8:45 AM IST: plan + watching until 12:00
+    schedule:
+    # GitHub sometimes delays or skips scheduled runs, so each half of the day
+    # has backups. Extra runs wait their turn and exit at once if not needed.
+    # Morning job (runs until 12:00): 8:45, 9:05, 9:25 AM IST
     - cron: "15 3 * * 1-5"
-    # 06:25 UTC = 11:55 AM IST: waits for the morning job, then runs to 3:31 PM
+    - cron: "35 3 * * 1-5"
+    - cron: "55 3 * * 1-5"
+    # Afternoon job (runs until 3:31 PM): 11:55 AM, 12:15, 12:40 PM IST
     - cron: "25 6 * * 1-5"
+    - cron: "45 6 * * 1-5"
+    - cron: "10 7 * * 1-5"
   workflow_dispatch:
     inputs:
       mode:
