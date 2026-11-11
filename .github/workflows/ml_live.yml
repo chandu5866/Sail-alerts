@@ -1,7 +1,7 @@
 name: Learning bot (live calls)
 
 on:
-    schedule:
+schedule:
     # GitHub sometimes delays or skips scheduled runs, so each half of the day
     # has backups. Extra runs wait their turn and exit at once if not needed.
     # Morning job (runs until 12:00): 8:45, 9:05, 9:25 AM IST
