@@ -452,7 +452,7 @@ def load_state(today):
     s = load_json(STATE_FILE)
     if s and s.get("date") == str(today):
         return s
-        return dict(date=str(today), sent=[], missed=[], plan_sent=False, done=False)
+    return dict(date=str(today), sent=[], missed=[], plan_sent=False, done=False)
 
 
 def save_state(state):
