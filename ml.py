@@ -419,6 +419,7 @@ def learn():
         bits = [f"{'wins more' if w[k] > 0 else 'loses more'} {PLAIN[FEATURES[k]]}"
                 for k in np.argsort(-np.abs(w))[:2]]
         lines.append(f"  {SETUP_NAME[name]}: " + "; ".join(bits))
+          lines.append("Morning only (signals 9:35 - 11:30). Shares: " + ", ".join(jumpy))
     if ctx is None:
         lines.append("⚠️ No NIFTY data (NIFTYBEES): market-trend facts were left out.")
     if failed:
@@ -503,7 +504,7 @@ def plan_msg(model, now, late):
              f"the rest runs to T2.",
              f"Unseen test: {te['n']} calls, T1 reached {te['t1']:.0f}%, in profit {te['acc']:.0f}%, "
              f"Rs {te['net']:+,.0f} (no learning: Rs {base['net']:+,.0f}).",
-             f"Model from {model['trained_at'][:10]}. Calls 9:35 - 2:30, square off by 3:00."]
+             f"Model from {model['trained_at'][:10]}. Calls 9:35 - 11:30, square off by 3:00."]
     if model["status"] != "tested":
         lines.append("📝 Paper only: watch the calls, don't use real money.")
     if late:
