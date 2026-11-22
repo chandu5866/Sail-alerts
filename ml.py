@@ -50,7 +50,7 @@ MAX_TRADES_PER_DAY = 4
 MIN_CALLS_PER_DAY = 0.3
 MIN_TEST_TRADES = 15
 RIDGE = 10.0
-PLANS = {"A": 0.75, "B": 1.0 "C": 0.5}}          # T1 distance as a multiple of the risk
+PLANS = {"A": 0.75, "B": 1.0, "C": 0.5}          # T1 distance as a multiple of the risk
 LOSS_LIMITS = [2, 99]                  # stop for the day after N losing calls
 HANDOFF = dtime(12, 0, 30)
 DAY_END = dtime(15, 31)
@@ -61,7 +61,7 @@ STEP = timedelta(minutes=E.BAR_MIN)
 LAST_ENTRY = dtime(11, 25)     # morning only: last signal candle ends 11:30
 JUMPY_N = 25                   # trade only the 25 jumpiest shares
 BACKUP_FROM = dtime(10, 30)    # no call yet by 10:30 -> backup call allowed
-BACKUP_P = 0.5                 # backup call needs at least 50% confidence# trade only the 15 jumpiest shares
+BACKUP_P = 0.5                 # backup call needs at least 50% confidence
 
 POOL = ["SAIL", "TATASTEEL", "SBIN", "ICICIBANK", "HDFCBANK", "AXISBANK",
         "RELIANCE", "INFY", "TATAPOWER", "BANKBARODA", "PNB", "ONGC", "NTPC",
@@ -298,12 +298,12 @@ def predict(models, df):
 
 
 # -------------------------------- policy ---------------------------------
-def policy(df, thr, max_losses=99, max_per_day=MAX_TRADES_PER_DAY, backup=None):):
+def policy(df, thr, max_losses=99, max_per_day=MAX_TRADES_PER_DAY, backup=None):
     """One trade at a time across all shares, highest confidence first; no new
     trade after max_losses losing calls that day."""
     if df.empty:
         return []
-    ok = df["p"] >= min(thr, backup or thr) .sort_values(["t_sig", "p", "sym", "setup"],
+    ok = df[df["p"] >= min(thr, backup or thr)].sort_values(["t_sig", "p", "sym", "setup"],
                                         ascending=[True, False, True, True])
     chosen = []
     for d, g in ok.groupby("day", sort=True):
@@ -313,7 +313,7 @@ def policy(df, thr, max_losses=99, max_per_day=MAX_TRADES_PER_DAY, backup=None):
                 break
             if busy is not None and (pd.isna(busy) or r.t_sig <= busy):
                 continue
-              if r.p < thr and (n > 0 or r.t_sig.time() < BACKUP_FROM): continue
+            if r.p < thr and (n > 0 or r.t_sig.time() < BACKUP_FROM): continue
             chosen.append(r.Index)
             n += 1
             busy = r.t_exit
@@ -388,9 +388,9 @@ def learn():
             thr, val = best
             test = score(te, policy(te, thr, ml), nd_te)      # 3) honest unseen check
             base = score(te, policy(te, -1.0, ml), nd_te)     # same plan, no learning
-                        bk = policy(te, thr, ml, backup=BACKUP_P)
+            bk = policy(te, thr, ml, backup=BACKUP_P)
             combos.append(dict(plan=plan, max_losses=ml, threshold=thr, validate=val,
-                               test=test, baseline=base)) backup=score(te, [i for i in bk if te.at[i, "p"] < thr], nd_te)))
+            test=test, baseline=base, backup=score(te, [i for i in bk if te.at[i, "p"] < thr], nd_te)))
     best = max(combos, key=lambda c: c["validate"]["net"])  # chosen on tuning only
     status = "tested" if (best["test"]["net"] > 0 and best["validate"]["net"] > 0
                           and best["test"]["n"] >= MIN_TEST_TRADES) else "paper"
@@ -400,7 +400,7 @@ def learn():
                threshold=best["threshold"], status=status, validate=best["validate"],
                test=best["test"], baseline=best["baseline"], combos=combos,
                shares=jumpy, index_ok=ctx is not None,
-               
+               models=models, max_trades=MAX_TRADES_PER_DAY, backup_p=BACKUP_P)
     with open(MODEL_FILE, "w") as f:
         json.dump(cfg, f)
 
@@ -452,7 +452,7 @@ def load_state(today):
     s = load_json(STATE_FILE)
     if s and s.get("date") == str(today):
         return s
-    return dict(date=str(to               models=models, max_trades=MAX_TRADES_PER_DAY, backup_p=BACKUP_P)day), sent=[], missed=[], plan_sent=False, done=False)
+        return dict(date=str(today), sent=[], missed=[], plan_sent=False, done=False)
 
 
 def save_state(state):
