@@ -59,7 +59,7 @@ LATE_MIN = 8
 GRACE_S = 25
 STEP = timedelta(minutes=E.BAR_MIN)
 LAST_ENTRY = dtime(11, 25)     # morning only: last signal candle ends 11:30
-JUMPY_N = 25                   # trade only the 25 jumpiest shares
+JUMPY_N = 15                   # trade only the 25 jumpiest shares
 BACKUP_FROM = dtime(10, 30)    # no call yet by 10:30 -> backup call allowed
 BACKUP_P = 0.5                 # backup call needs at least 50% confidence
 
