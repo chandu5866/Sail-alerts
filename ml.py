@@ -58,6 +58,8 @@ SUMMARY_AT = dtime(15, 0, 20)
 LATE_MIN = 8
 GRACE_S = 25
 STEP = timedelta(minutes=E.BAR_MIN)
+LAST_ENTRY = dtime(11, 25)     # morning only: last signal candle ends 11:30
+JUMPY_N = 15                   # trade only the 15 jumpiest shares
 
 POOL = ["SAIL", "TATASTEEL", "SBIN", "ICICIBANK", "HDFCBANK", "AXISBANK",
         "RELIANCE", "INFY", "TATAPOWER", "BANKBARODA", "PNB", "ONGC", "NTPC",
@@ -222,6 +224,8 @@ def stock_candidates(sym, ind, capital, ctx, plans, day_from=None, only_day=None
             if ind["tod"][i0] != dtime(9, 15):      # skip special short sessions (Muhurat)
                 continue
             for j in np.flatnonzero(s[i0:i1]) + i0:
+                      if ind["tod"][j] > LAST_ENTRY:
+                       continue
                 side = int(s[j])
                 for plan in plans:
                     r = sim_two_targets(ind, j, side, p, i1, PLANS[plan])
@@ -359,6 +363,9 @@ def learn():
     cut1, cut2 = days[n // 2], days[3 * n // 4]
     nd_va = sum(1 for d in days if cut1 <= d < cut2)
     nd_te = sum(1 for d in days if d >= cut2)
+    jump = allc[allc["day"] < cut1].groupby("sym")["atr"].median()
+    jumpy = list(jump.sort_values(ascending=False).index[:JUMPY_N])
+    allc = allc[allc["sym"].isin(jumpy)]
 
     combos = []
     for plan in PLANS:
@@ -388,7 +395,7 @@ def learn():
                plan=best["plan"], k1=PLANS[best["plan"]], max_losses=best["max_losses"],
                threshold=best["threshold"], status=status, validate=best["validate"],
                test=best["test"], baseline=best["baseline"], combos=combos,
-               shares=[s for s in POOL if s not in failed], index_ok=ctx is not None,
+               shares=jumpy, index_ok=ctx is not None,
                models=models, max_trades=MAX_TRADES_PER_DAY)
     with open(MODEL_FILE, "w") as f:
         json.dump(cfg, f)
@@ -419,7 +426,7 @@ def learn():
         bits = [f"{'wins more' if w[k] > 0 else 'loses more'} {PLAIN[FEATURES[k]]}"
                 for k in np.argsort(-np.abs(w))[:2]]
         lines.append(f"  {SETUP_NAME[name]}: " + "; ".join(bits))
-        lines.append("Morning only (signals 9:35 - 11:30). Shares: " + ", ".join(jumpy))
+    lines.append("Morning only (signals 9:35 - 11:30). Shares: " + ", ".join(jumpy))
     if ctx is None:
         lines.append("⚠️ No NIFTY data (NIFTYBEES): market-trend facts were left out.")
     if failed:
