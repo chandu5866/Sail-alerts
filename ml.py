@@ -400,7 +400,7 @@ def learn():
                threshold=best["threshold"], status=status, validate=best["validate"],
                test=best["test"], baseline=best["baseline"], combos=combos,
                shares=jumpy, index_ok=ctx is not None,
-               models=models, max_trades=MAX_TRADES_PER_DAY), backup_p=BACKUP_P)
+               
     with open(MODEL_FILE, "w") as f:
         json.dump(cfg, f)
 
@@ -419,7 +419,7 @@ def learn():
                      f"T1 {t['t1']:.0f}%, profit {t['acc']:.0f}%, Rs {t['net']:+,.0f} "
                      f"(tuning Rs {v['net']:+,.0f})")
     b = best["baseline"]
-        lines.append(f"   ⚪ Backup calls alone (no strong call by 10:30): {best['backup']['n']} calls, profit {best['backup']['acc']:.0f}%, Rs {best['backup']['net']:+,.0f}")
+    lines.append(f"   ⚪ Backup calls alone (no strong call by 10:30): {best['backup']['n']} calls, profit {best['backup']['acc']:.0f}%, Rs {best['backup']['net']:+,.0f}")
     lines += [f"   Same exits, no learning: {b['n']} calls, T1 {b['t1']:.0f}%, "
               f"profit {b['acc']:.0f}%, Rs {b['net']:+,.0f}", "",
               f"👉 = chosen on the tuning period: {desc(best)}.",
@@ -452,7 +452,7 @@ def load_state(today):
     s = load_json(STATE_FILE)
     if s and s.get("date") == str(today):
         return s
-    return dict(date=str(today), sent=[], missed=[], plan_sent=False, done=False)
+    return dict(date=str(to               models=models, max_trades=MAX_TRADES_PER_DAY, backup_p=BACKUP_P)day), sent=[], missed=[], plan_sent=False, done=False)
 
 
 def save_state(state):
@@ -501,7 +501,7 @@ def pick(frames, model, day_from=None, only_day=None):
         return pd.DataFrame(), False
     allc = pd.concat(parts, ignore_index=True)
     allc["p"] = predict(model["models"], allc)
-    return allc.loc[policy(allc, model["threshold"], model["max_losses"], model["max_trades"])], backup=model.get("backup_p"))], True
+    return allc.loc[policy(allc, model["threshold"], model["max_losses"], model["max_trades"], backup=model.get("backup_p"))], True
 
 
 def plan_msg(model, now, late):
@@ -528,7 +528,7 @@ def entry_msg(r, model):
     q, q1, q2 = split_qty(model["capital"], r.entry)
     verb, icon = ("BUY", "🟢") if r.side == 1 else ("SELL (short)", "🔴")
     tag = "" if model["status"] == "tested" else "\n📝 Paper call."
-          if r.p < model["threshold"]: icon, tag = "⚪" + icon, tag + "\n⚪ LOWER CONFIDENCE backup call: skip or take small."
+    if r.p < model["threshold"]: icon, tag = "⚪" + icon, tag + "\n⚪ LOWER CONFIDENCE backup call: skip or take small."
     return (f"{icon} {verb} {r.sym} at ~{fmt(r.entry)}  ({r.t_sig:%H:%M})\n"
             f"SL {fmt(r.sl)}\nT1 {fmt(r.t1)}  -> book {q1}, move SL to {fmt(r.entry)}\n"
             f"T2 {fmt(r.t2)}  -> exit the other {q2}\n"
