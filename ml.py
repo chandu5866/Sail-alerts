@@ -419,7 +419,7 @@ def learn():
         bits = [f"{'wins more' if w[k] > 0 else 'loses more'} {PLAIN[FEATURES[k]]}"
                 for k in np.argsort(-np.abs(w))[:2]]
         lines.append(f"  {SETUP_NAME[name]}: " + "; ".join(bits))
-          lines.append("Morning only (signals 9:35 - 11:30). Shares: " + ", ".join(jumpy))
+        lines.append("Morning only (signals 9:35 - 11:30). Shares: " + ", ".join(jumpy))
     if ctx is None:
         lines.append("⚠️ No NIFTY data (NIFTYBEES): market-trend facts were left out.")
     if failed:
