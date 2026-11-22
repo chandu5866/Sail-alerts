@@ -224,8 +224,8 @@ def stock_candidates(sym, ind, capital, ctx, plans, day_from=None, only_day=None
             if ind["tod"][i0] != dtime(9, 15):      # skip special short sessions (Muhurat)
                 continue
             for j in np.flatnonzero(s[i0:i1]) + i0:
-                      if ind["tod"][j] > LAST_ENTRY:
-                       continue
+                if ind["tod"][j] > LAST_ENTRY:
+                    continue
                 side = int(s[j])
                 for plan in plans:
                     r = sim_two_targets(ind, j, side, p, i1, PLANS[plan])
