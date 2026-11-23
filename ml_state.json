@@ -1,6 +1,12 @@
 {
-  "date": "2026-11-20",
-  "sent": [],
+  "date": "2026-11-23",
+  "sent": [
+    "TATASTEEL:0935:vwap:ENTRY",
+    "TATASTEEL:0935:vwap:T1",
+    "TATASTEEL:0935:vwap:EXIT",
+    "TATASTEEL:1110:rsipb:ENTRY",
+    "TATASTEEL:1110:rsipb:EXIT"
+  ],
   "missed": [],
   "plan_sent": true,
   "done": false
