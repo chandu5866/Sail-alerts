@@ -320,7 +320,7 @@ def policy(df, thr, max_losses=99, max_per_day=MAX_TRADES_PER_DAY, backup=None):
             if r.p < thr and (n > 0 or r.t_sig.time() < BACKUP_FROM): continue
             if ONE_PER_SHARE and r.sym in seen: continue
             chosen.append(r.Index)
-                      seen.add(r.sym)
+            seen.add(r.sym)
             n += 1
             busy = r.t_exit
             if not pd.isna(r.net) and r.net < 0:
