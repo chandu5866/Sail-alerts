@@ -62,7 +62,9 @@ LAST_ENTRY = dtime(11, 25)     # morning only: last signal candle ends 11:30
 JUMPY_N = 15                   # trade only the 25 jumpiest shares
 BACKUP_FROM = dtime(10, 30)    # no call yet by 10:30 -> backup call allowed
 BACKUP_P = 0.5                 # backup call needs at least 50% confidence
-
+ONE_PER_SHARE = True           # max one trade per share per day (no flip-flops)
+RECENT_DAYS = 90               # the newest 90 days of the training data...
+RECENT_W = 3.0                 # ...count 3x in training
 POOL = ["SAIL", "TATASTEEL", "SBIN", "ICICIBANK", "HDFCBANK", "AXISBANK",
         "RELIANCE", "INFY", "TATAPOWER", "BANKBARODA", "PNB", "ONGC", "NTPC",
         "COALINDIA", "VEDL", "HINDALCO", "JSWSTEEL", "BEL", "BHEL", "NMDC",
@@ -257,7 +259,8 @@ def _z(X, mu, sd):
     return np.clip(Z, -5, 5)
 
 
-def fit_logit(X, y, lam=RIDGE, iters=30):
+def fit_logit(X, y, lam=RIDGE, iters=30, sw=None):
+    sw = np.ones(len(X)) if sw is None else np.asarray(sw, float)
     mu = np.nanmean(X, axis=0)
     sd = np.nanstd(X, axis=0)
     mu[~np.isfinite(mu)] = 0.0
@@ -268,8 +271,8 @@ def fit_logit(X, y, lam=RIDGE, iters=30):
     reg[0] = 0.0
     for _ in range(iters):
         pr = 1 / (1 + np.exp(-np.clip(A @ w, -30, 30)))
-        g = A.T @ (pr - y) + reg * w
-        Hm = (A * (pr * (1 - pr))[:, None]).T @ A + np.diag(reg) + 1e-9 * np.eye(len(w))
+        g = A.T @ (sw * (pr - y)) + reg * w
+        Hm = (A * (sw * pr * (1 - pr))[:, None]).T @ A + np.diag(reg) + 1e-9 * np.eye(len(w))
         w -= np.linalg.solve(Hm, g)
     return dict(mu=mu.tolist(), sd=sd.tolist(), w=w.tolist())
 
@@ -278,9 +281,10 @@ def fit_models(df):
     models = {}
     for name in SETUPS:
         part = df[(df["setup"] == name) & df["net"].notna()]
+        wt = np.where((pd.to_datetime(part["day"]).max() - pd.to_datetime(part["day"])).dt.days <= RECENT_DAYS, RECENT_W, 1.0)
         if len(part) >= 200:
             models[name] = fit_logit(part[FEATURES].to_numpy(float),
-                                     (part["net"] > 0).to_numpy(float))
+                                             (part["net"] > 0).to_numpy(float), sw=wt)
     return models
 
 
@@ -307,14 +311,16 @@ def policy(df, thr, max_losses=99, max_per_day=MAX_TRADES_PER_DAY, backup=None):
                                         ascending=[True, False, True, True])
     chosen = []
     for d, g in ok.groupby("day", sort=True):
-        busy, n, losses = None, 0, 0
+        busy, n, losses, seen = None, 0, 0, set()
         for r in g.itertuples():
             if n >= max_per_day or losses >= max_losses:
                 break
             if busy is not None and (pd.isna(busy) or r.t_sig <= busy):
                 continue
             if r.p < thr and (n > 0 or r.t_sig.time() < BACKUP_FROM): continue
+            if ONE_PER_SHARE and r.sym in seen: continue
             chosen.append(r.Index)
+                      seen.add(r.sym)
             n += 1
             busy = r.t_exit
             if not pd.isna(r.net) and r.net < 0:
