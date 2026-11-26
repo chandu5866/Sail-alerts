@@ -50,8 +50,8 @@ MAX_TRADES_PER_DAY = 4
 MIN_CALLS_PER_DAY = 0.3
 MIN_TEST_TRADES = 15
 RIDGE = 10.0
-PLANS = {"A": 0.75, "B": 1.0, "C": 0.5}          # T1 distance as a multiple of the risk
-LOSS_LIMITS = [2, 99]                  # stop for the day after N losing calls
+PLANS = {"A": 0.75, "B": 1.0, "C": 0.5, "D": 1.0, "E": 1.5, "F": 0.75, "G": 0.75}          # T1 distance as a multiple of the risk
+LOSS_LIMITS = [2]                  # stop for the day after N losing calls
 HANDOFF = dtime(12, 0, 30)
 DAY_END = dtime(15, 31)
 SUMMARY_AT = dtime(15, 0, 20)
@@ -66,6 +66,11 @@ ONE_PER_SHARE = True           # max one trade per share per day (no flip-flops)
 RECENT_DAYS = 90               # the newest 90 days of the training data...
 RECENT_W = 3.0                 # ...count 3x in training
 MIN_CONF = 0.75                # live: only calls with confidence >= 75%, no backup calls
+# per plan: SL distance x, T2 distance x, and where the SL moves after T1
+# (0 = entry, 0.6 = 60% of the way to T1, locking in profit)
+EXITS = {"A": (1.0, 1.0, 0.0), "B": (1.0, 1.0, 0.0), "C": (1.0, 1.0, 0.0),
+         "D": (1.0, 1.0, 0.6), "E": (1.0, 1.5, 0.6), "F": (0.75, 1.0, 0.5),
+         "G": (1.5, 1.0, 0.5)}
 POOL = ["SAIL", "TATASTEEL", "SBIN", "ICICIBANK", "HDFCBANK", "AXISBANK",
         "RELIANCE", "INFY", "TATAPOWER", "BANKBARODA", "PNB", "ONGC", "NTPC",
         "COALINDIA", "VEDL", "HINDALCO", "JSWSTEEL", "BEL", "BHEL", "NMDC",
@@ -98,7 +103,7 @@ PLAIN = {"time": "later in the day", "atr": "in jumpier shares",
          "bb_pos": "when price is stretched outside its band",
          "nifty_day": "when NIFTY moved the same way today",
          "nifty_trend": "with NIFTY's 15-min trend"}
-OUTCOME = {"T2": "🎯🎯 T1 + T2", "T1BE": "🎯 T1, rest at entry", "T1CLOSE": "🎯 T1, rest squared off",
+OUTCOME = {"T2": "🎯🎯 T1 + T2", "T1BE": "🎯 T1, rest at trailed SL", "T1CLOSE": "🎯 T1, rest squared off",
            "STOP": "❌ stop-loss", "CLOSE": "⏰ squared off before T1"}
 
 
@@ -153,7 +158,7 @@ def features(ind, ii, sd, ctx):
     return X
 
 
-def sim_two_targets(ind, j, side, p, i1, k1):
+def sim_two_targets(ind, j, side, p, i1, k1, ex=(1.0, 1.0, 0.0)):
     """Entry at the close of candle j. Full position until SL or T1; at T1 half
     is booked and the SL moves to entry from the next candle; the rest runs to
     T2, back to entry, or the 3:00 square-off. SL is assumed first whenever a
@@ -162,11 +167,12 @@ def sim_two_targets(ind, j, side, p, i1, k1):
     entry = E.tick(C[j])
     a = atr[j] if np.isfinite(atr[j]) else entry * E.MIN_SL_PCT / 100
     dist = min(max(p.get("am", E.ATR_MULT) * a, entry * E.MIN_SL_PCT / 100),
-               entry * E.MAX_SL_PCT / 100)
+               entry * E.MAX_SL_PCT / 100) * ex[0]
     sl = E.tick(entry - side * dist)
     t1 = E.tick(entry + side * k1 * dist)
-    t2 = E.tick(entry + side * p["R"] * dist)
-    r = dict(entry=entry, sl=sl, t1=t1, t2=t2, k1=None, k=None, why=None, x1=None, x2=None)
+    t2 = E.tick(entry + side * max(p["R"] * ex[1], k1) * dist)
+    be = E.tick(entry + ex[2] * (t1 - entry))
+    r = dict(entry=entry, sl=sl, t1=t1, t2=t2, be=be, k1=None, k=None, why=None, x1=None, x2=None)
     hit = (lambda k, lvl: H[k] >= lvl) if side == 1 else (lambda k, lvl: L[k] <= lvl)
     back = (lambda k, lvl: L[k] <= lvl) if side == 1 else (lambda k, lvl: H[k] >= lvl)
     for k in range(j + 1, i1):
@@ -182,8 +188,8 @@ def sim_two_targets(ind, j, side, p, i1, k1):
             elif tod[k] >= E.LAST_BAR:
                 r.update(k=k, why="CLOSE", x2=E.tick(C[k]))
         else:                                            # half left, SL at entry
-            if back(k, entry):
-                r.update(k=k, why="T1BE", x2=entry)
+            if back(k, be):
+                r.update(k=k, why="T1BE", x2=be)
             elif hit(k, t2):
                 r.update(k=k, why="T2", x2=t2)
             elif tod[k] >= E.LAST_BAR:
@@ -233,14 +239,14 @@ def stock_candidates(sym, ind, capital, ctx, plans, day_from=None, only_day=None
                     continue
                 side = int(s[j])
                 for plan in plans:
-                    r = sim_two_targets(ind, j, side, p, i1, PLANS[plan])
+                    r = sim_two_targets(ind, j, side, p, i1, PLANS[plan], EXITS[plan])
                     net = net_result(side, r, capital)
                     rows.append(dict(
                         sym=sym, setup=name, plan=plan, day=d, side=side,
                         t_sig=ind["index"][j] + STEP,
                         t_t1=(ind["index"][r["k1"]] + STEP) if r["k1"] is not None else pd.NaT,
                         t_exit=(ind["index"][r["k"]] + STEP) if r["k"] is not None else pd.NaT,
-                        entry=r["entry"], sl=r["sl"], t1=r["t1"], t2=r["t2"], why=r["why"],
+                        entry=r["entry"], sl=r["sl"], t1=r["t1"], t2=r["t2"], be=r["be"], why=r["why"],
                         x1=r["x1"], x2=r["x2"], net=np.nan if net is None else net))
                     js.append(j)
                     sides.append(side)
@@ -404,7 +410,7 @@ def learn():
                           and best["test"]["n"] >= MIN_TEST_TRADES) else "paper"
     models = fit_models(allc[allc["plan"] == best["plan"]])  # 4) final model, whole year
     cfg = dict(trained_at=now.isoformat(timespec="minutes"), capital=capital,
-               plan=best["plan"], k1=PLANS[best["plan"]], max_losses=best["max_losses"],
+               plan=best["plan"], k1=PLANS[best["plan"]], exits=EXITS[best["plan"]], max_losses=best["max_losses"],
                threshold=best["threshold"], status=status, validate=best["validate"],
                test=best["test"], baseline=best["baseline"], combos=combos,
                shares=jumpy, index_ok=ctx is not None,
@@ -414,9 +420,11 @@ def learn():
 
     def desc(c):
         lim = "stop after 2 losses" if c["max_losses"] < 99 else "no loss limit"
-        return f"T1 {PLANS[c['plan']]:g}x risk, {lim}"
+        sl, t2, lk = EXITS[c["plan"]]
+        return (f"Plan {c['plan']}: SL {sl:g}x, T1 {PLANS[c['plan']]:g}x, T2 {t2:g}x, "
+                f"after T1 SL to {'entry' if lk == 0 else f'{lk * 100:.0f}% of T1'}")
 
-    lines = [f"🤖 Learning study v4 (T1 + T2): {len(cfg['shares'])} shares x {len(SETUPS)} setups, "
+    lines = [f"🤖 Learning study v7 (bot picks SL/T1/T2): {len(cfg['shares'])} shares x {len(SETUPS)} setups, "
              f"~{n} trading days, Rs {capital:,.0f} per trade, after charges.", "",
              f"Side by side - unseen test, newest {nd_te} days:",
              "(T1% = calls that reached T1; profit% = calls that made money)"]
@@ -521,7 +529,7 @@ def plan_msg(model, now, late):
              f"Watching {len(model['shares'])} shares. Calls only at confidence >= "
              f"{max(model['threshold'], MIN_CONF) * 100:.0f}%, one trade at a time, max {model['max_trades']} a day, "
              f"{lim}. Rs {model['capital']:,.0f} per trade.",
-             f"Every call: at T1 ({model['k1']:g}x risk) book half and move SL to entry; "
+             f"Every call: at T1 ({model['k1']:g}x risk) book half and move the SL up (plan {model['plan']}); "
              f"the rest runs to T2.",
              f"Unseen test: {te['n']} calls, T1 reached {te['t1']:.0f}%, in profit {te['acc']:.0f}%, "
              f"Rs {te['net']:+,.0f} (no learning: Rs {base['net']:+,.0f}).",
@@ -537,9 +545,10 @@ def entry_msg(r, model):
     q, q1, q2 = split_qty(model["capital"], r.entry)
     verb, icon = ("BUY", "🟢") if r.side == 1 else ("SELL (short)", "🔴")
     tag = "" if model["status"] == "tested" else "\n📝 Paper call."
+    lock = "entry" if r.be == r.entry else fmt(r.be)
     if r.p < model["threshold"]: icon, tag = "⚪" + icon, tag + "\n⚪ LOWER CONFIDENCE backup call: skip or take small."
     return (f"{icon} {verb} {r.sym} at ~{fmt(r.entry)}  ({r.t_sig:%H:%M})\n"
-            f"SL {fmt(r.sl)}\nT1 {fmt(r.t1)}  -> book {q1}, move SL to {fmt(r.entry)}\n"
+            f"SL {fmt(r.sl)}\nT1 {fmt(r.t1)}  -> book {q1}, move SL to {lock}\n"
             f"T2 {fmt(r.t2)}  -> exit the other {q2}\n"
             f"Qty {q} | Confidence {r.p * 100:.0f}% | {SETUP_NAME[r.setup]}\n"
             f"Intraday (MIS). Skip if the price already moved 0.3% past entry.{tag}")
@@ -548,7 +557,7 @@ def entry_msg(r, model):
 def t1_msg(r, model):
     q, q1, q2 = split_qty(model["capital"], r.entry)
     return (f"🎯 {r.sym}: T1 {fmt(r.t1)} reached. Book {q1} shares now and move the SL "
-            f"for the other {q2} to entry {fmt(r.entry)}. Target T2 {fmt(r.t2)}.")
+            f"for the other {q2} to {fmt(r.be)}. Target T2 {fmt(r.t2)}.")
 
 
 def exit_msg(r):
@@ -556,7 +565,7 @@ def exit_msg(r):
     if r.why == "T2":
         return f"🎯🎯 {r.sym}: T2 {fmt(r.t2)} reached. Exit the rest of the {side} trade."
     if r.why == "T1BE":
-        return f"↩️ {r.sym}: back to entry {fmt(r.entry)}. The rest closed at break-even."
+        return f"↩️ {r.sym}: back to {fmt(r.be)} after T1. Exit the rest of the trade."
     if r.why == "STOP":
         return f"❌ {r.sym}: SL {fmt(r.sl)} hit. Exit the whole {side} trade."
     rest = "the rest" if r.why == "T1CLOSE" else "the whole position"
@@ -729,7 +738,7 @@ def replay():
         send("🔁 Replay: no data received from Groww.")
         return
     chosen, _ = pick(frames, model, day_from=days[0])
-    lines = [f"🔁 DRY RUN v4 ({len(days)} day(s)): T1 {model['k1']:g}x risk (book half, SL to entry), "
+    lines = [f"🔁 DRY RUN v7 ({len(days)} day(s)): plan {model['plan']}, T1 {model['k1']:g}x risk (book half, then trail SL), "
              f"T2 for the rest, cut-off {model['threshold'] * 100:.0f}%, Rs {model['capital']:,.0f} "
              f"per call, after charges, one trade at a time. No orders were placed."]
     tot = []
