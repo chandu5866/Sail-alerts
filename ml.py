@@ -65,6 +65,7 @@ BACKUP_P = 0.5                 # backup call needs at least 50% confidence
 ONE_PER_SHARE = True           # max one trade per share per day (no flip-flops)
 RECENT_DAYS = 90               # the newest 90 days of the training data...
 RECENT_W = 3.0                 # ...count 3x in training
+WF_BLOCK = 20                  # walk-forward block = ~1 month of trading days
 MIN_CONF = 0.75                # live: only calls with confidence >= 75%, no backup calls
 # per plan: SL distance x, T2 distance x, and where the SL moves after T1
 # (0 = entry, 0.6 = 60% of the way to T1, locking in profit)
@@ -335,6 +336,45 @@ def policy(df, thr, max_losses=99, max_per_day=MAX_TRADES_PER_DAY, backup=None):
     return chosen
 
 
+def tune_thr(va, nd, ml):
+    best = None
+    for thr in np.arange(0.30, 0.801, 0.025):
+        sc = score(va, policy(va, thr, ml), nd)
+        if sc["per_day"] >= MIN_CALLS_PER_DAY and (best is None or sc["net"] > best[1]):
+            best = (round(float(thr), 3), sc["net"])
+    return 0.5 if best is None else best[0]
+
+
+def walk_forward(allc, days, cut1):
+    dl = list(days)
+    wd = [d for d in dl if d >= cut1]
+    blocks = [wd[i:i + WF_BLOCK] for i in range(0, len(wd), WF_BLOCK)]
+    blocks = [b for b in blocks if len(b) >= WF_BLOCK // 2]
+    ml = LOSS_LIMITS[0]
+    wf = {}
+    for plan in PLANS:
+        P = allc[allc["plan"] == plan]
+        res, thrs = [], []
+        for b in blocks:
+            i0 = dl.index(b[0])
+            vd = dl[max(0, i0 - WF_BLOCK):i0]
+            m = fit_models(P[P["day"] < vd[0]])              # only older days
+            va = P[P["day"].isin(vd)].copy()
+            te = P[P["day"].isin(b)].copy()
+            va["p"] = predict(m, va)
+            te["p"] = predict(m, te)
+            thr = tune_thr(va, len(vd), ml)                   # cut-off from the month before
+            res.append(score(te, policy(te, thr, ml), len(b)))
+            thrs.append(thr)
+        n = sum(r["n"] for r in res)
+        wins = sum(r["acc"] * r["n"] / 100 for r in res)
+        wf[plan] = dict(n=int(n), net=float(sum(r["net"] for r in res)),
+                        acc=round(float(wins / n * 100), 1) if n else 0.0,
+                        good=int(sum(1 for r in res if r["net"] > 0)), blocks=res,
+                        thr=float(np.median(thrs)) if thrs else 0.5)
+    return wf, blocks
+
+
 def score(df, idx, ndays):
     part = df.loc[idx]
     part = part[part["net"].notna()]
@@ -405,16 +445,21 @@ def learn():
             combos.append(dict(plan=plan, max_losses=ml, threshold=thr, validate=val,
             test=test, baseline=base, backup=score(te, [i for i in bk if te.at[i, "p"] < thr], nd_te)))
             combos[-1]["per"] = {s: [score(te[te["setup"] == s], policy(te[te["setup"] == s], t, ml), nd_te) for t in (-1.0, 0.75)] for s in SETUPS}
-    best = max(combos, key=lambda c: (c["validate"]["acc"], c["validate"]["net"]))  # most accurate on tuning
-    status = "tested" if (best["test"]["net"] > 0 and best["validate"]["net"] > 0
-                          and best["test"]["n"] >= MIN_TEST_TRADES) else "paper"
+    wf, blocks = walk_forward(allc, days, cut1)
+    ok = [p for p in PLANS if wf[p]["net"] > 0] or list(PLANS)   # profitable plans first
+    pick_plan = max(ok, key=lambda p: (wf[p]["acc"], wf[p]["net"]))  # then the most accurate
+    best = [c for c in combos if c["plan"] == pick_plan][0]
+    best = dict(best, threshold=wf[pick_plan]["thr"])
+    w = wf[pick_plan]
+    status = "tested" if (w["net"] > 0 and w["good"] * 10 >= 6 * len(blocks)
+                          and w["n"] >= MIN_TEST_TRADES) else "paper"
     models = fit_models(allc[allc["plan"] == best["plan"]])  # 4) final model, whole year
     cfg = dict(trained_at=now.isoformat(timespec="minutes"), capital=capital,
                plan=best["plan"], k1=PLANS[best["plan"]], exits=EXITS[best["plan"]], max_losses=best["max_losses"],
                threshold=best["threshold"], status=status, validate=best["validate"],
                test=best["test"], baseline=best["baseline"], combos=combos,
                shares=jumpy, index_ok=ctx is not None,
-               models=models, max_trades=MAX_TRADES_PER_DAY, backup_p=BACKUP_P)
+               models=models, max_trades=MAX_TRADES_PER_DAY, backup_p=BACKUP_P, wf=wf)
     with open(MODEL_FILE, "w") as f:
         json.dump(cfg, f)
 
@@ -430,7 +475,7 @@ def learn():
              "(T1% = calls that reached T1; profit% = calls that made money)"]
     for c in combos:
         t, v = c["test"], c["validate"]
-        mark = "👉 " if c is best else "   "
+        mark = "👉 " if c["plan"] == best["plan"] else "   "
         lines.append(f"{mark}{desc(c)}, conf >= {c['threshold'] * 100:.0f}%: {t['n']} calls, "
                      f"T1 {t['t1']:.0f}%, profit {t['acc']:.0f}%, Rs {t['net']:+,.0f} "
                      f"(tuning Rs {v['net']:+,.0f})")
@@ -439,9 +484,9 @@ def learn():
     lines += ["Each setup alone (unseen test, chosen plan): every signal | conf >= 75%"] + [f"  {SETUP_NAME[s]}: {a['n']} calls, {a['acc']:.0f}%, Rs {a['net']:+,.0f} | {h['n']} calls, {h['acc']:.0f}%, Rs {h['net']:+,.0f}" for s, (a, h) in best["per"].items()] 
     lines += [f"   Same exits, no learning: {b['n']} calls, T1 {b['t1']:.0f}%, "
               f"profit {b['acc']:.0f}%, Rs {b['net']:+,.0f}", "",
-              f"👉 = most accurate on the tuning period: {desc(best)}.",
-              ("✅ Status: LIVE calls - passed the unseen test." if status == "tested" else
-               "📝 Status: PAPER only - did not pass the unseen test. Watch, don't use real money."),
+              f"👉 = chosen by walk-forward (profitable first, then most accurate): {desc(best)}.",
+              ("✅ Status: LIVE calls - passed walk-forward (profit, and won in 60%+ of months)." if status == "tested" else
+               "📝 Status: PAPER only - did not pass walk-forward. Watch, don't use real money."),
               "", "What it learned (strongest patterns per setup):"]
     for name, m in models.items():
         w = np.asarray(m["w"][1:])
@@ -454,6 +499,18 @@ def learn():
     if failed:
         lines.append("No data for: " + ", ".join(failed))
     send("\n".join(lines))
+    wl = [f"🚶 Walk-forward: {len(blocks)} blocks of ~{WF_BLOCK} trading days "
+          f"({blocks[0][0]:%d %b} - {blocks[-1][-1]:%d %b}). Each block is traded by a model "
+          f"trained only on older days, cut-off set on the month before.", ""]
+    for p in PLANS:
+        r = wf[p]
+        mark = "👉 " if p == best["plan"] else "   "
+        wl.append(f"{mark}Plan {p}: {r['n']} calls, profit {r['acc']:.0f}%, Rs {r['net']:+,.0f}, "
+                  f"winning months {r['good']}/{len(blocks)}")
+        wl.append("      " + " | ".join(f"{b['net']:+,.0f}" for b in r["blocks"]))
+    wl += ["", f"Live cut-off for plan {best['plan']}: {best['threshold'] * 100:.0f}% "
+               f"(median of the monthly cut-offs; live calls still need 75%+)."]
+    send("\n".join(wl))
 
 
 # --------------------------------- live -----------------------------------
