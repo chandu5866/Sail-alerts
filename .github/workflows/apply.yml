@@ -1,0 +1,33 @@
+name: Apply patch
+
+on:
+  push:
+    paths:
+      - patch.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply
+        run: python patch.py
+      - name: Save
+        run: |
+          git config user.name "alert-bot"
+          git config user.email "alert-bot@users.noreply.github.com"
+          git rm -q patch.py
+          git add ml.py
+          git commit -m "apply patch"
+          for i in 1 2 3; do
+            git pull --rebase -q && git push -q && exit 0
+            sleep 5
+          done
+          exit 1
