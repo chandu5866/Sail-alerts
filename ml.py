@@ -65,6 +65,7 @@ BACKUP_P = 0.5                 # backup call needs at least 50% confidence
 ONE_PER_SHARE = True           # max one trade per share per day (no flip-flops)
 RECENT_DAYS = 90               # the newest 90 days of the training data...
 RECENT_W = 3.0                 # ...count 3x in training
+MIN_CONF = 0.75                # live: only calls with confidence >= 75%, no backup calls
 POOL = ["SAIL", "TATASTEEL", "SBIN", "ICICIBANK", "HDFCBANK", "AXISBANK",
         "RELIANCE", "INFY", "TATAPOWER", "BANKBARODA", "PNB", "ONGC", "NTPC",
         "COALINDIA", "VEDL", "HINDALCO", "JSWSTEEL", "BEL", "BHEL", "NMDC",
@@ -397,6 +398,7 @@ def learn():
             bk = policy(te, thr, ml, backup=BACKUP_P)
             combos.append(dict(plan=plan, max_losses=ml, threshold=thr, validate=val,
             test=test, baseline=base, backup=score(te, [i for i in bk if te.at[i, "p"] < thr], nd_te)))
+            combos[-1]["per"] = {s: [score(te[te["setup"] == s], policy(te[te["setup"] == s], t, ml), nd_te) for t in (-1.0, 0.75)] for s in SETUPS}
     best = max(combos, key=lambda c: c["validate"]["net"])  # chosen on tuning only
     status = "tested" if (best["test"]["net"] > 0 and best["validate"]["net"] > 0
                           and best["test"]["n"] >= MIN_TEST_TRADES) else "paper"
@@ -426,6 +428,7 @@ def learn():
                      f"(tuning Rs {v['net']:+,.0f})")
     b = best["baseline"]
     lines.append(f"   ⚪ Backup calls alone (no strong call by 10:30): {best['backup']['n']} calls, profit {best['backup']['acc']:.0f}%, Rs {best['backup']['net']:+,.0f}")
+    lines += ["Each setup alone (unseen test, chosen plan): every signal | conf >= 75%"] + [f"  {SETUP_NAME[s]}: {a['n']} calls, {a['acc']:.0f}%, Rs {a['net']:+,.0f} | {h['n']} calls, {h['acc']:.0f}%, Rs {h['net']:+,.0f}" for s, (a, h) in best["per"].items()] 
     lines += [f"   Same exits, no learning: {b['n']} calls, T1 {b['t1']:.0f}%, "
               f"profit {b['acc']:.0f}%, Rs {b['net']:+,.0f}", "",
               f"👉 = chosen on the tuning period: {desc(best)}.",
@@ -507,7 +510,7 @@ def pick(frames, model, day_from=None, only_day=None):
         return pd.DataFrame(), False
     allc = pd.concat(parts, ignore_index=True)
     allc["p"] = predict(model["models"], allc)
-    return allc.loc[policy(allc, model["threshold"], model["max_losses"], model["max_trades"], backup=model.get("backup_p"))], True
+    return allc.loc[policy(allc, max(model["threshold"], MIN_CONF), model["max_losses"], model["max_trades"], backup=None)], True
 
 
 def plan_msg(model, now, late):
@@ -516,7 +519,7 @@ def plan_msg(model, now, late):
     lines = [f"🤖 Learning bot - {now:%a %d %b} "
              f"({'✅ LIVE' if model['status'] == 'tested' else '📝 PAPER ONLY'})",
              f"Watching {len(model['shares'])} shares. Calls only at confidence >= "
-             f"{model['threshold'] * 100:.0f}%, one trade at a time, max {model['max_trades']} a day, "
+             f"{max(model['threshold'], MIN_CONF) * 100:.0f}%, one trade at a time, max {model['max_trades']} a day, "
              f"{lim}. Rs {model['capital']:,.0f} per trade.",
              f"Every call: at T1 ({model['k1']:g}x risk) book half and move SL to entry; "
              f"the rest runs to T2.",
