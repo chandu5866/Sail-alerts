@@ -405,7 +405,7 @@ def learn():
             combos.append(dict(plan=plan, max_losses=ml, threshold=thr, validate=val,
             test=test, baseline=base, backup=score(te, [i for i in bk if te.at[i, "p"] < thr], nd_te)))
             combos[-1]["per"] = {s: [score(te[te["setup"] == s], policy(te[te["setup"] == s], t, ml), nd_te) for t in (-1.0, 0.75)] for s in SETUPS}
-    best = max(combos, key=lambda c: c["validate"]["net"])  # chosen on tuning only
+    best = max(combos, key=lambda c: (c["validate"]["acc"], c["validate"]["net"]))  # most accurate on tuning
     status = "tested" if (best["test"]["net"] > 0 and best["validate"]["net"] > 0
                           and best["test"]["n"] >= MIN_TEST_TRADES) else "paper"
     models = fit_models(allc[allc["plan"] == best["plan"]])  # 4) final model, whole year
@@ -439,7 +439,7 @@ def learn():
     lines += ["Each setup alone (unseen test, chosen plan): every signal | conf >= 75%"] + [f"  {SETUP_NAME[s]}: {a['n']} calls, {a['acc']:.0f}%, Rs {a['net']:+,.0f} | {h['n']} calls, {h['acc']:.0f}%, Rs {h['net']:+,.0f}" for s, (a, h) in best["per"].items()] 
     lines += [f"   Same exits, no learning: {b['n']} calls, T1 {b['t1']:.0f}%, "
               f"profit {b['acc']:.0f}%, Rs {b['net']:+,.0f}", "",
-              f"👉 = chosen on the tuning period: {desc(best)}.",
+              f"👉 = most accurate on the tuning period: {desc(best)}.",
               ("✅ Status: LIVE calls - passed the unseen test." if status == "tested" else
                "📝 Status: PAPER only - did not pass the unseen test. Watch, don't use real money."),
               "", "What it learned (strongest patterns per setup):"]
