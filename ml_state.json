@@ -1,9 +1,6 @@
 {
-  "date": "2026-11-26",
-  "sent": [
-    "HINDALCO:1030:vwap:ENTRY",
-    "HINDALCO:1030:vwap:EXIT"
-  ],
+  "date": "2026-11-27",
+  "sent": [],
   "missed": [],
   "plan_sent": true,
   "done": false
